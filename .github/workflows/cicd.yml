@@ -1,0 +1,43 @@
+name: CI/CD - Diet Service
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  ci:
+    uses: chintu1602/NutriAI-reusable-workflows/.github/workflows/ci.yml@main
+    with:
+      service-name: nutriai-diet-service
+      sonar_project_key: NutriAI-Diet-Service
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      EMAIL_TO: ${{ secrets.EMAIL_TO }}
+
+  cd:
+    needs: ci
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+    uses: chintu1602/NutriAI-reusable-workflows/.github/workflows/helm-updater.yml@main
+    with:
+      helm-service-name: diet-service
+      chart-path: helm/nutriai
+      image-tag: ${{ needs.ci.outputs.tag }}
+    secrets:
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+      MANIFEST_REPO: ${{ secrets.MANIFEST_REPO }}
