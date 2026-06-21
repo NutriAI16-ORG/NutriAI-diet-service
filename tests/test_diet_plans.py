@@ -266,3 +266,104 @@ class TestDietPlanService:
         # Verify the profile parameters were passed to generate_diet_plan
         assert called_kwargs["medical_conditions"] == {"conditions": ["Diabetes", "Hypertension"], "other": "Gout"}
         assert called_kwargs["dietary_preferences"] == ["vegetarian"]
+
+
+class TestDietPlanServiceLayer:
+    """Direct tests for the core logic in app/services.py."""
+
+    def test_generate_diet_plan_pdf(self, test_user):
+        from app.services import generate_diet_plan_pdf
+        
+        # Test full PDF document generation with complete nested datasets
+        plan = DietPlan(
+            id=uuid.uuid4(),
+            user_id=test_user.id,
+            plan_title="Diet Plan PDF test",
+            plan_summary="test summary",
+            foods_to_eat=[{"food_name": "Vegetables", "reason": "Fiber", "portion_size": "1 cup", "timing": "Morning"}],
+            foods_to_avoid=[{"food_name": "Sugar", "reason": "Diabetes", "risk_level": "high"}],
+            weekly_meal_plan={
+                "monday": {"breakfast": "Oatmeal", "lunch": "Salad", "dinner": "Grilled chicken", "snacks": "Fruit"},
+                "tuesday": {"breakfast": "Oatmeal", "lunch": "Salad", "dinner": "Grilled chicken", "snacks": "Fruit"},
+                "wednesday": {"breakfast": "Oatmeal", "lunch": "Salad", "dinner": "Grilled chicken", "snacks": "Fruit"},
+                "thursday": {"breakfast": "Oatmeal", "lunch": "Salad", "dinner": "Grilled chicken", "snacks": "Fruit"},
+                "friday": {"breakfast": "Oatmeal", "lunch": "Salad", "dinner": "Grilled chicken", "snacks": "Fruit"},
+                "saturday": {"breakfast": "Oatmeal", "lunch": "Salad", "dinner": "Grilled chicken", "snacks": "Fruit"},
+                "sunday": {"breakfast": "Oatmeal", "lunch": "Salad", "dinner": "Grilled chicken", "snacks": "Fruit"}
+            },
+            nutritional_guidelines={"daily_calories": 2000, "protein_grams": 60, "carbs_grams": 250, "fats_grams": 65, "fiber_grams": 30, "water_liters": 2.5},
+            allergy_notes=["Avoid peanuts"],
+            additional_recommendations=["Stay hydrated"],
+            generated_at=datetime.utcnow(),
+            is_active=True
+        )
+        pdf_bytes = generate_diet_plan_pdf(plan)
+        assert len(pdf_bytes) > 0
+
+    @patch("app.services.settings.AZURE_SERVICE_BUS_CONNECTION_STRING", "Endpoint=sb://test")
+    @patch("azure.servicebus.ServiceBusClient")
+    def test_publish_meal_reminders_success(self, mock_sb_class, test_user):
+        from app.services import publish_meal_reminders
+        
+        mock_sender = MagicMock()
+        mock_client = MagicMock()
+        mock_sb_class.from_connection_string.return_value = mock_client
+        mock_client.get_topic_sender.return_value = mock_sender
+
+        plan = DietPlan(
+            id=uuid.uuid4(),
+            user_id=test_user.id,
+            plan_title="Diet Plan SB test",
+            foods_to_eat=[{"food_name": "Vegetables"}],
+            foods_to_avoid=[],
+            weekly_meal_plan={
+                "monday": {"breakfast": "Oatmeal", "lunch": "Salad", "dinner": "Grilled chicken", "snacks": "Fruit"},
+            },
+            generated_at=datetime.utcnow()
+        )
+
+        publish_meal_reminders(plan, "user@example.com", is_first_plan=True)
+        assert mock_sb_class.from_connection_string.called
+        assert mock_sender.send_messages.called
+
+    @patch("app.services.get_openai_client")
+    def test_generate_diet_plan_ai_success(self, mock_get_client):
+        from app.services import generate_diet_plan_ai
+        
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        
+        # Valid JSON completion payload
+        mock_choice = MagicMock()
+        mock_choice.message.content = '{\n    "plan_title": "AI Test Title",\n    "plan_summary": "Test summary",\n    "foods_to_eat": [{"food_name": "Oats", "reason": "Healthy", "portion_size": "1 cup", "timing": "Morning", "frequency": "Daily"}],\n    "foods_to_avoid": [{"food_name": "Sugar", "reason": "Diabetes", "risk_level": "high"}],\n    "weekly_meal_plan": {},\n    "nutritional_guidelines": {"daily_calories": 2000},\n    "allergy_notes": [],\n    "additional_recommendations": []\n}'
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = mock_response
+
+        # Execute
+        result = generate_diet_plan_ai(
+            ocr_content="Medical lab results",
+            allergies=[{"allergen_name": "Peanuts", "severity": "severe", "notes": ""}],
+            medical_conditions={},
+            dietary_preferences=[]
+        )
+        assert result is not None
+        assert result["plan_title"] == "AI Test Title"
+
+    @patch("app.services.get_openai_client")
+    def test_generate_diet_plan_ai_validation_failure(self, mock_get_client):
+        from app.services import generate_diet_plan_ai
+        
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        
+        # Return invalid JSON keys
+        mock_choice = MagicMock()
+        mock_choice.message.content = '{"invalid_structure": true}'
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = mock_response
+
+        result = generate_diet_plan_ai("OCR text", [], {}, [])
+        assert result is None
+
