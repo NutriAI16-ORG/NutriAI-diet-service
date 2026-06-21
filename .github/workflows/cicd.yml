@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   ci:
-    uses: chintu1602/NutriAI-reusable-workflows/.github/workflows/ci.yml@main
+    uses: NutriAI16-ORG/NutriAI-reusable-workflows/.github/workflows/ci.yml@main
     with:
       service-name: nutriai-diet-service
       sonar_project_key: NutriAI-Diet-Service
@@ -32,7 +32,7 @@ jobs:
   cd:
     needs: ci
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-    uses: chintu1602/NutriAI-reusable-workflows/.github/workflows/helm-updater.yml@main
+    uses: NutriAI16-ORG/NutriAI-reusable-workflows/.github/workflows/helm-updater.yml@main
     with:
       helm-service-name: diet-service
       chart-path: helm/nutriai
