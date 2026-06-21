@@ -10,9 +10,9 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from database import get_db
-from models import Document, FoodAllergy
-from services import create_diet_plan, get_diet_plans, get_diet_plan_detail, generate_diet_plan_pdf
+from app.database import get_db
+from app.models import Document, FoodAllergy
+from app.services import create_diet_plan, get_diet_plans, get_diet_plan_detail, generate_diet_plan_pdf
 
 logger = logging.getLogger(__name__)
 

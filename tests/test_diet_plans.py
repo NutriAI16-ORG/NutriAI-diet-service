@@ -7,7 +7,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import patch, MagicMock
 
-from models import Document, DietPlan, FoodAllergy
+from app.models import Document, DietPlan, FoodAllergy
 
 def test_health_endpoint(client):
     """Health check endpoint should return 200 and diet service identification."""
@@ -211,8 +211,8 @@ class TestDietPlanService:
     @patch("services.generate_diet_plan_ai")
     def test_create_diet_plan_includes_profile_data(self, mock_generate, db_session, test_user):
         """create_diet_plan should fetch and pass medical conditions and dietary preferences."""
-        from models import PatientProfile
-        from services import create_diet_plan
+        from app.models import PatientProfile
+        from app.services import create_diet_plan
 
         # Create patient profile
         profile = PatientProfile(

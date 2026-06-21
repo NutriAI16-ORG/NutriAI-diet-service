@@ -8,7 +8,7 @@ from datetime import datetime
 from sqlalchemy import Column, String, Text, DateTime, Boolean, ForeignKey, JSON, Enum, Float, Integer
 from sqlalchemy.dialects.postgresql import UUID
 
-from database import Base
+from app.database import Base
 
 
 class DietPlan(Base):

@@ -20,8 +20,8 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 
 from sqlalchemy.orm import Session
 
-from config import get_settings
-from models import Document, DietPlan, FoodAllergy, User, PatientProfile
+from app.config import get_settings
+from app.models import Document, DietPlan, FoodAllergy, User, PatientProfile
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
