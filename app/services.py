@@ -56,67 +56,78 @@ def truncate_to_tokens(text: str, max_tokens: int = 4000) -> str:
     return truncated + "\n\n[Content truncated due to length]"
 
 
+def _build_allergy_section(allergies: list) -> str:
+    """Build the allergy block for the system prompt."""
+    if not allergies:
+        return "\n\nNo known food allergies reported for this patient."
+    lines = "\n\n⚠️ CRITICAL PATIENT ALLERGIES - NEVER RECOMMEND THESE FOODS:\n"
+    for allergy in allergies:
+        lines += f"- {allergy['allergen_name']} (Severity: {allergy['severity'].upper()})"
+        if allergy.get('notes'):
+            lines += f" - Notes: {allergy['notes']}"
+        lines += "\n"
+    lines += (
+        "\nYou MUST NEVER recommend any food containing the above allergens. "
+        "This is a medical safety requirement. If any allergen is found in a food item, "
+        "it MUST be listed in foods_to_avoid with appropriate risk level. "
+        "Include specific allergy warnings in the allergy_notes field."
+    )
+    return lines
+
+
+def _build_conditions_section(medical_conditions) -> str:
+    """Build the medical conditions block for the system prompt."""
+    if not medical_conditions:
+        return ""
+    if isinstance(medical_conditions, dict):
+        conditions_list = list(medical_conditions.get("conditions", []))
+        other_text = medical_conditions.get("other", "")
+        if other_text:
+            conditions_list.append(other_text)
+    else:
+        conditions_list = list(medical_conditions)
+    conditions_list = [c for c in conditions_list if c and c != "None"]
+    if not conditions_list:
+        return ""
+    return (
+        f"\n\n🏥 PATIENT MEDICAL CONDITIONS:\n"
+        f"The patient has the following medical conditions: {', '.join(conditions_list)}.\n"
+        "You MUST tailor recommendations for the medical conditions (e.g., if diabetic, suggest low-glycemic foods;\n"
+        "if hypertensive, recommend low-sodium options; if pregnant, ensure adequate folic acid and iron)."
+    )
+
+
+def _build_preferences_section(dietary_preferences: list) -> str:
+    """Build the dietary preferences block for the system prompt."""
+    if not dietary_preferences:
+        return ""
+    return (
+        f"\n\n🍽️ PATIENT DIETARY PREFERENCES:\n"
+        f"The patient follows these dietary preferences: {', '.join(dietary_preferences)}.\n"
+        "You MUST respect ALL dietary preferences (e.g., if vegetarian, do not recommend meat, poultry, or fish;\n"
+        "if vegan, exclude all animal products; if halal or kosher, ensure all foods comply with those requirements;\n"
+        "if keto, focus on high-fat low-carb options). Violating dietary preferences is NOT acceptable."
+    )
+
+
 def build_system_prompt(
     allergies: list,
     medical_conditions: dict = None,
     dietary_preferences: list = None,
     enhanced: bool = False,
 ) -> str:
-    # --- Allergy section ---
-    allergy_section = ""
-    if allergies:
-        allergy_section = "\n\n⚠️ CRITICAL PATIENT ALLERGIES - NEVER RECOMMEND THESE FOODS:\n"
-        for allergy in allergies:
-            allergy_section += f"- {allergy['allergen_name']} (Severity: {allergy['severity'].upper()})"
-            if allergy.get('notes'):
-                allergy_section += f" - Notes: {allergy['notes']}"
-            allergy_section += "\n"
-        allergy_section += "\nYou MUST NEVER recommend any food containing the above allergens. "
-        allergy_section += "This is a medical safety requirement. If any allergen is found in a food item, "
-        allergy_section += "it MUST be listed in foods_to_avoid with appropriate risk level. "
-        allergy_section += "Include specific allergy warnings in the allergy_notes field."
-    else:
-        allergy_section = "\n\nNo known food allergies reported for this patient."
-
-    # --- Medical conditions section ---
-    conditions_section = ""
-    if medical_conditions:
-        conditions_list = []
-        if isinstance(medical_conditions, dict):
-            conditions_list = medical_conditions.get("conditions", [])
-            other_text = medical_conditions.get("other", "")
-            if other_text:
-                conditions_list = list(conditions_list) + [other_text]
-        elif isinstance(medical_conditions, list):
-            conditions_list = medical_conditions
-
-        # Filter out "None"
-        conditions_list = [c for c in conditions_list if c and c != "None"]
-
-        if conditions_list:
-            conditions_section = f"""\n\n🏥 PATIENT MEDICAL CONDITIONS:
-The patient has the following medical conditions: {', '.join(conditions_list)}.
-You MUST tailor recommendations for the medical conditions (e.g., if diabetic, suggest low-glycemic foods;
-if hypertensive, recommend low-sodium options; if pregnant, ensure adequate folic acid and iron)."""
-
-    # --- Dietary preferences section ---
-    preferences_section = ""
-    if dietary_preferences and len(dietary_preferences) > 0:
-        preferences_section = f"""\n\n🍽️ PATIENT DIETARY PREFERENCES:
-The patient follows these dietary preferences: {', '.join(dietary_preferences)}.
-You MUST respect ALL dietary preferences (e.g., if vegetarian, do not recommend meat, poultry, or fish;
-if vegan, exclude all animal products; if halal or kosher, ensure all foods comply with those requirements;
-if keto, focus on high-fat low-carb options). Violating dietary preferences is NOT acceptable."""
+    allergy_section = _build_allergy_section(allergies)
+    conditions_section = _build_conditions_section(medical_conditions)
+    preferences_section = _build_preferences_section(dietary_preferences)
 
     enhanced_instruction = ""
     if enhanced:
-        enhanced_instruction = """
-
-IMPORTANT: You MUST include at least 5 foods to eat and at least 5 foods to avoid.
-Each food_to_eat item MUST have food_name, reason, portion_size, and timing fields.
-Each food_to_avoid item MUST have food_name, reason, and risk_level fields.
-Failure to include these fields will result in rejection of your response.
-"""
+        enhanced_instruction = (
+            "\n\nIMPORTANT: You MUST include at least 5 foods to eat and at least 5 foods to avoid.\n"
+            "Each food_to_eat item MUST have food_name, reason, portion_size, and timing fields.\n"
+            "Each food_to_avoid item MUST have food_name, reason, and risk_level fields.\n"
+            "Failure to include these fields will result in rejection of your response."
+        )
 
     system_prompt = f"""You are a professional clinical nutritionist and dietitian AI assistant for the NutriAI Health Portal.
 Your role is to analyze patient medical documents (lab reports, prescriptions, etc.), identify any current disease or medical findings from the reports, and generate personalized, safe, and medically-appropriate diet plans.
@@ -191,47 +202,38 @@ Guidelines:
     return system_prompt
 
 
+def _validate_food_list(data: dict, key: str, required_sub_fields: list) -> bool:
+    """Check that a food list field is a non-empty list with all required sub-fields present."""
+    items = data.get(key)
+    if not isinstance(items, list) or not items:
+        logger.warning("%s is empty or not a list", key)
+        return False
+    for item in items:
+        if not isinstance(item, dict):
+            return False
+        for req in required_sub_fields:
+            if not item.get(req):
+                logger.warning("%s item missing '%s'", key, req)
+                return False
+    return True
+
+
 def validate_diet_plan_json(data: dict) -> bool:
     """Validate the GPT-4 response structure including food item fields."""
     required_fields = [
         "plan_title", "plan_summary", "foods_to_eat", "foods_to_avoid",
         "weekly_meal_plan", "nutritional_guidelines", "allergy_notes", "additional_recommendations",
     ]
-
     for field in required_fields:
         if field not in data:
-            logger.warning(f"Missing required field: {field}")
+            logger.warning("Missing required field: %s", field)
             return False
-
-    # Validate foods_to_eat is non-empty with required sub-fields
-    if not isinstance(data["foods_to_eat"], list) or len(data["foods_to_eat"]) == 0:
-        logger.warning("foods_to_eat is empty or not a list")
+    if not _validate_food_list(data, "foods_to_eat", ["food_name", "reason", "portion_size", "timing"]):
         return False
-
-    for item in data["foods_to_eat"]:
-        if not isinstance(item, dict):
-            return False
-        for req in ["food_name", "reason", "portion_size", "timing"]:
-            if req not in item or not item[req]:
-                logger.warning(f"foods_to_eat item missing '{req}'")
-                return False
-
-    # Validate foods_to_avoid is non-empty with required sub-fields
-    if not isinstance(data["foods_to_avoid"], list) or len(data["foods_to_avoid"]) == 0:
-        logger.warning("foods_to_avoid is empty or not a list")
+    if not _validate_food_list(data, "foods_to_avoid", ["food_name", "reason", "risk_level"]):
         return False
-
-    for item in data["foods_to_avoid"]:
-        if not isinstance(item, dict):
-            return False
-        for req in ["food_name", "reason", "risk_level"]:
-            if req not in item or not item[req]:
-                logger.warning(f"foods_to_avoid item missing '{req}'")
-                return False
-
     if not isinstance(data["nutritional_guidelines"], dict):
         return False
-
     return True
 
 
@@ -328,6 +330,74 @@ def generate_diet_plan_ai(
 # Service Bus - Meal Reminder Publishing
 # ============================================================
 
+def _build_food_lists(diet_plan: DietPlan) -> tuple:
+    """Return (foods_eat, foods_avoid) lists serialised for Service Bus messages."""
+    foods_eat = [
+        {
+            "food_name": f.get("food_name", ""),
+            "portion_size": f.get("portion_size", ""),
+            "timing": f.get("timing", ""),
+            "reason": f.get("reason", ""),
+        }
+        for f in (diet_plan.foods_to_eat or [])
+    ]
+    foods_avoid = [
+        {
+            "food_name": f.get("food_name", ""),
+            "reason": f.get("reason", ""),
+            "risk_level": f.get("risk_level", ""),
+        }
+        for f in (diet_plan.foods_to_avoid or [])
+    ]
+    return foods_eat, foods_avoid
+
+
+def _send_scheduled_meal_messages(sender, diet_plan: DietPlan, now, today) -> int:
+    """Send per-meal scheduled Service Bus messages. Returns the count sent."""
+    from azure.servicebus import ServiceBusMessage  # imported inside to stay optional
+
+    meal_times = {
+        "breakfast": 8,
+        "lunch": 13,
+        "snack": 16,
+        "dinner": 19,
+    }
+    foods_eat, foods_avoid = _build_food_lists(diet_plan)
+    weekly_plan = diet_plan.weekly_meal_plan or {}
+    messages_sent = 0
+
+    for day_index in range(7):
+        day_date = today + timedelta(days=day_index)
+        day_name = day_date.strftime("%A").lower()
+        day_plan = weekly_plan.get(day_name, {})
+
+        for meal_type, hour in meal_times.items():
+            scheduled_time = datetime(day_date.year, day_date.month, day_date.day, hour, 0, 0)
+            if scheduled_time <= now:
+                continue
+            meal_key = "snacks" if meal_type == "snack" else meal_type
+            meal_description = day_plan.get(meal_key, day_plan.get(meal_type, ""))
+            message_body = json.dumps({
+                "user_id": str(diet_plan.user_id),
+                "user_email": "",
+                "meal_type": meal_type,
+                "foods_to_eat": foods_eat,
+                "foods_to_avoid": foods_avoid,
+                "day_name": day_name.capitalize(),
+                "meal_description": meal_description,
+            })
+            msg = ServiceBusMessage(
+                body=message_body,
+                content_type="application/json",
+                subject=f"meal-reminder-{day_name}-{meal_type}",
+                scheduled_enqueue_time_utc=scheduled_time,
+            )
+            sender.send_messages(msg)
+            messages_sent += 1
+
+    return messages_sent
+
+
 def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: bool = False):
     """
     Publish 28 messages (7 days × 4 meals) to Service Bus topic
@@ -340,16 +410,8 @@ def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: 
     try:
         from azure.servicebus import ServiceBusClient, ServiceBusMessage
 
-        meal_times = {
-            "breakfast": 8,   # 8:00 AM UTC
-            "lunch": 13,      # 1:00 PM UTC
-            "snack": 16,      # 4:00 PM UTC
-            "dinner": 19,     # 7:00 PM UTC
-        }
-
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         today = now.date()
-
         servicebus_client = ServiceBusClient.from_connection_string(
             settings.AZURE_SERVICE_BUS_CONNECTION_STRING
         )
@@ -357,74 +419,21 @@ def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: 
         with servicebus_client:
             sender = servicebus_client.get_topic_sender(topic_name=settings.AZURE_SERVICE_BUS_TOPIC_NAME)
             with sender:
-                messages_sent = 0
-                weekly_plan = diet_plan.weekly_meal_plan or {}
+                messages_sent = _send_scheduled_meal_messages(sender, diet_plan, now, today)
 
-                for day_index in range(7):
-                    day_date = today + timedelta(days=day_index)
-                    day_name = day_date.strftime("%A").lower()
-                    day_plan = weekly_plan.get(day_name, {})
-
-                    for meal_type, hour in meal_times.items():
-                        scheduled_time = datetime(
-                            day_date.year, day_date.month, day_date.day,
-                            hour, 0, 0
-                        )
-
-                        # Only schedule if the meal time is in the future
-                        if scheduled_time <= now:
-                            continue
-
-                        meal_key = "snacks" if meal_type == "snack" else meal_type
-                        meal_description = day_plan.get(meal_key, day_plan.get(meal_type, ""))
-
-                        # Build foods_to_eat and foods_to_avoid for this meal
-                        foods_eat = []
-                        for food in (diet_plan.foods_to_eat or []):
-                            foods_eat.append({
-                                "food_name": food.get("food_name", ""),
-                                "portion_size": food.get("portion_size", ""),
-                                "timing": food.get("timing", ""),
-                                "reason": food.get("reason", ""),
-                            })
-
-                        foods_avoid = []
-                        for food in (diet_plan.foods_to_avoid or []):
-                            foods_avoid.append({
-                                "food_name": food.get("food_name", ""),
-                                "reason": food.get("reason", ""),
-                                "risk_level": food.get("risk_level", ""),
-                            })
-
-                        message_body = json.dumps({
-                            "user_id": str(diet_plan.user_id),
-                            "user_email": user_email,
-                            "meal_type": meal_type,
-                            "foods_to_eat": foods_eat,
-                            "foods_to_avoid": foods_avoid,
-                            "day_name": day_name.capitalize(),
-                            "meal_description": meal_description,
-                        })
-
-                        msg = ServiceBusMessage(
-                            body=message_body,
-                            content_type="application/json",
-                            subject=f"meal-reminder-{day_name}-{meal_type}",
-                            scheduled_enqueue_time_utc=scheduled_time,
-                        )
-                        sender.send_messages(msg)
-                        messages_sent += 1
-
-                # Send an immediate Welcome reminder to verify SMTP configuration in real time
                 if user_email and is_first_plan:
+                    foods_eat, foods_avoid = _build_food_lists(diet_plan)
                     welcome_body = json.dumps({
                         "user_id": str(diet_plan.user_id),
                         "user_email": user_email,
                         "meal_type": "Welcome",
-                        "foods_to_eat": (foods_eat[:3] if foods_eat else []),
-                        "foods_to_avoid": (foods_avoid[:3] if foods_avoid else []),
+                        "foods_to_eat": foods_eat[:3],
+                        "foods_to_avoid": foods_avoid[:3],
                         "day_name": "Today",
-                        "meal_description": "Welcome to NutriAI! Your personalized diet plan is ready. This is an immediate test notification to confirm your email alerts are functioning correctly."
+                        "meal_description": (
+                            "Welcome to NutriAI! Your personalized diet plan is ready. "
+                            "This is an immediate test notification to confirm your email alerts are functioning correctly."
+                        ),
                     })
                     welcome_msg = ServiceBusMessage(
                         body=welcome_body,
@@ -434,49 +443,75 @@ def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: 
                     sender.send_messages(welcome_msg)
                     messages_sent += 1
 
-                logger.info(f"Published {messages_sent} meal reminder messages to Service Bus")
+                logger.info("Published %d meal reminder messages to Service Bus", messages_sent)
 
     except ImportError:
         logger.warning("azure-servicebus not installed, skipping meal reminders")
     except (ServiceBusError, OSError, RuntimeError, ValueError) as e:
-        logger.error(f"Error publishing meal reminders to Service Bus: {e}")
+        logger.error("Error publishing meal reminders to Service Bus: %s", e)
 
 
 # ============================================================
 # Diet Plan Orchestration
 # ============================================================
 
+def _fetch_documents(db: Session, user_id: UUID, document_ids: List[str]) -> tuple:
+    """Return (documents list, combined_ocr string) for valid completed docs."""
+    import uuid as _uuid
+    documents = []
+    combined_ocr = ""
+    for doc_id_str in document_ids:
+        try:
+            doc_id = _uuid.UUID(doc_id_str) if isinstance(doc_id_str, str) else doc_id_str
+        except ValueError:
+            continue
+        doc = db.query(Document).filter(
+            Document.id == doc_id,
+            Document.user_id == user_id,
+            Document.ocr_status == "completed",
+        ).first()
+        if doc and doc.ocr_content:
+            documents.append(doc)
+            combined_ocr += f"\n--- Document: {doc.original_filename} (Type: {doc.document_type}) ---\n"
+            combined_ocr += doc.ocr_content + "\n"
+    return documents, combined_ocr
+
+
+def _save_diet_plan(db: Session, user_id: UUID, documents: list, plan_data: dict) -> DietPlan:
+    """Persist a new DietPlan record and return the refreshed instance."""
+    diet_plan = DietPlan(
+        user_id=user_id,
+        document_ids=[str(d.id) for d in documents],
+        plan_title=plan_data.get("plan_title", "Personalized Diet Plan"),
+        plan_summary=plan_data.get("plan_summary", ""),
+        foods_to_eat=plan_data.get("foods_to_eat", []),
+        foods_to_avoid=plan_data.get("foods_to_avoid", []),
+        weekly_meal_plan=plan_data.get("weekly_meal_plan", {}),
+        nutritional_guidelines=plan_data.get("nutritional_guidelines", {}),
+        allergy_notes=plan_data.get("allergy_notes", []),
+        additional_recommendations=plan_data.get("additional_recommendations", []),
+        is_active=True,
+    )
+    db.add(diet_plan)
+    db.commit()
+    db.refresh(diet_plan)
+    return diet_plan
+
+
 def create_diet_plan(
     db: Session,
-    user_id: str,
+    user_id,
     document_ids: List[str],
     additional_notes: Optional[str] = None,
 ) -> Optional[DietPlan]:
     try:
-        import uuid
+        import uuid as _uuid
         if isinstance(user_id, str):
-            user_id = uuid.UUID(user_id)
+            user_id = _uuid.UUID(user_id)
 
-        # Fetch documents
-        documents = []
-        combined_ocr = ""
-        for doc_id_str in document_ids:
-            try:
-                doc_id = uuid.UUID(doc_id_str) if isinstance(doc_id_str, str) else doc_id_str
-            except ValueError:
-                continue
-            doc = db.query(Document).filter(
-                Document.id == doc_id,
-                Document.user_id == user_id,
-                Document.ocr_status == "completed",
-            ).first()
-            if doc and doc.ocr_content:
-                documents.append(doc)
-                combined_ocr += f"\n--- Document: {doc.original_filename} (Type: {doc.document_type}) ---\n"
-                combined_ocr += doc.ocr_content + "\n"
-
+        documents, combined_ocr = _fetch_documents(db, user_id, document_ids)
         if not documents:
-            logger.warning(f"No valid documents found for user: {user_id}")
+            logger.warning("No valid documents found for user: %s", user_id)
             return None
 
         # Gather allergies
@@ -491,7 +526,6 @@ def create_diet_plan(
         medical_conditions = patient_profile.medical_conditions if patient_profile else None
         dietary_preferences = patient_profile.dietary_preferences if patient_profile else None
 
-        # Generate with AI (with retry/validation)
         plan_data = generate_diet_plan_ai(
             ocr_content=combined_ocr,
             allergies=allergy_list,
@@ -499,50 +533,30 @@ def create_diet_plan(
             dietary_preferences=dietary_preferences,
             additional_notes=additional_notes,
         )
-
         if not plan_data:
             logger.error("All GPT-4 attempts failed")
             return None
 
-        # Save to database
-        diet_plan = DietPlan(
-            user_id=user_id,
-            document_ids=[str(d.id) for d in documents],
-            plan_title=plan_data.get("plan_title", "Personalized Diet Plan"),
-            plan_summary=plan_data.get("plan_summary", ""),
-            foods_to_eat=plan_data.get("foods_to_eat", []),
-            foods_to_avoid=plan_data.get("foods_to_avoid", []),
-            weekly_meal_plan=plan_data.get("weekly_meal_plan", {}),
-            nutritional_guidelines=plan_data.get("nutritional_guidelines", {}),
-            allergy_notes=plan_data.get("allergy_notes", []),
-            additional_recommendations=plan_data.get("additional_recommendations", []),
-            is_active=True,
-        )
-        db.add(diet_plan)
-        db.commit()
-        db.refresh(diet_plan)
+        diet_plan = _save_diet_plan(db, user_id, documents, plan_data)
 
-        # Check if this is the first diet plan generated for the user
         is_first_plan = db.query(DietPlan).filter(DietPlan.user_id == user_id).count() == 1
-
-        # Publish meal reminders to Service Bus
         user = db.query(User).filter(User.id == user_id).first()
         user_email = user.email if user else ""
         publish_meal_reminders(diet_plan, user_email, is_first_plan=is_first_plan)
 
-        logger.info(f"Diet plan created: {diet_plan.id}")
+        logger.info("Diet plan created: %s", diet_plan.id)
         return diet_plan
 
     except (SQLAlchemyError, ValueError, OSError) as e:
-        logger.error(f"Error creating diet plan: {e}")
+        logger.error("Error creating diet plan: %s", e)
         db.rollback()
         return None
 
 
-def get_diet_plans(db: Session, user_id: str) -> List[DietPlan]:
-    import uuid
+def get_diet_plans(db: Session, user_id) -> List[DietPlan]:
+    import uuid as _uuid
     if isinstance(user_id, str):
-        user_id = uuid.UUID(user_id)
+        user_id = _uuid.UUID(user_id)
     return (
         db.query(DietPlan)
         .filter(DietPlan.user_id == user_id)
@@ -551,12 +565,12 @@ def get_diet_plans(db: Session, user_id: str) -> List[DietPlan]:
     )
 
 
-def get_diet_plan_detail(db: Session, plan_id: str, user_id: str) -> Optional[DietPlan]:
-    import uuid
+def get_diet_plan_detail(db: Session, plan_id, user_id) -> Optional[DietPlan]:
+    import uuid as _uuid
     if isinstance(user_id, str):
-        user_id = uuid.UUID(user_id)
+        user_id = _uuid.UUID(user_id)
     if isinstance(plan_id, str):
-        plan_id = uuid.UUID(plan_id)
+        plan_id = _uuid.UUID(plan_id)
     return (
         db.query(DietPlan)
         .filter(DietPlan.id == plan_id, DietPlan.user_id == user_id)
@@ -630,6 +644,7 @@ def generate_diet_plan_pdf(plan: DietPlan) -> bytes:
         elements.append(Spacer(1, 10))
 
     # 3. Weekly Meal Plan Table
+    _BR = "<br/>"
     if plan.weekly_meal_plan:
         elements.append(Paragraph("📅 Weekly Meal Plan", heading_style))
         days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -637,12 +652,12 @@ def generate_diet_plan_pdf(plan: DietPlan) -> bytes:
         for day in days:
             day_plan = plan.weekly_meal_plan.get(day, {})
             if day_plan:
-                meals_paragraphs = []
-                for meal_type in ["breakfast", "lunch", "dinner", "snacks"]:
-                     meal = day_plan.get(meal_type, "")
-                     if meal:
-                         meals_paragraphs.append(f"<b>{meal_type.capitalize()}:</b> {meal}")
-                meals_html = "<br/>".join(meals_paragraphs)
+                meals_paragraphs = [
+                    f"<b>{meal_type.capitalize()}:</b> {day_plan[meal_type]}"
+                    for meal_type in ["breakfast", "lunch", "dinner", "snacks"]
+                    if day_plan.get(meal_type)
+                ]
+                meals_html = _BR.join(meals_paragraphs)
                 table_data.append([
                     Paragraph(f"<b>{day.capitalize()}</b>", table_cell_style),
                     Paragraph(meals_html, table_cell_style)
@@ -761,7 +776,7 @@ def generate_diet_plan_pdf(plan: DietPlan) -> bytes:
     # 5. Allergy Notes Callout Box
     if plan.allergy_notes:
         elements.append(Paragraph("⚠️ Allergy Notes", heading_style))
-        notes_text = "<br/>".join([f"• {note}" for note in plan.allergy_notes])
+        notes_text = _BR.join([f"• {note}" for note in plan.allergy_notes])
         alert_style = ParagraphStyle(
             "AllergyAlert", parent=styles["Normal"],
             fontSize=8.5, leading=12, textColor=colors.HexColor("#78350F")
@@ -783,7 +798,7 @@ def generate_diet_plan_pdf(plan: DietPlan) -> bytes:
     # 6. Additional Recommendations Callout Box
     if plan.additional_recommendations:
         elements.append(Paragraph("💡 Additional Recommendations", heading_style))
-        recs_text = "<br/>".join([f"• {rec}" for rec in plan.additional_recommendations])
+        recs_text = _BR.join([f"• {rec}" for rec in plan.additional_recommendations])
         info_style = ParagraphStyle(
             "InfoAlert", parent=styles["Normal"],
             fontSize=8.5, leading=12, textColor=colors.HexColor("#1E3A8A")
