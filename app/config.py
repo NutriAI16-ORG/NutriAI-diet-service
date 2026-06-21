@@ -8,7 +8,7 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     APP_NAME: str = "NutriAI Diet Service"
-    DATABASE_URL: str = "postgresql://nutriai_user@localhost:5432/nutriai"
+    DATABASE_URL: str = "sqlite:///./test.db"
 
     AZURE_OPENAI_ENDPOINT: str = ""
     AZURE_OPENAI_KEY: str = ""
