@@ -7,7 +7,7 @@ and Azure Service Bus meal reminder publishing.
 import io
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional, List
 from uuid import UUID
 
@@ -22,11 +22,6 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
-try:
-    from azure.servicebus.exceptions import ServiceBusError
-except ImportError:
-    class ServiceBusError(Exception):
-        pass
 from app.models import Document, DietPlan, FoodAllergy, User, PatientProfile
 
 logger = logging.getLogger(__name__)
@@ -347,7 +342,7 @@ def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: 
             "dinner": 19,     # 7:00 PM UTC
         }
 
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.utcnow()
         today = now.date()
 
         servicebus_client = ServiceBusClient.from_connection_string(
@@ -438,7 +433,7 @@ def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: 
 
     except ImportError:
         logger.warning("azure-servicebus not installed, skipping meal reminders")
-    except (ServiceBusError, OSError, RuntimeError, ValueError) as e:
+    except (OSError, RuntimeError, ValueError) as e:
         logger.error(f"Error publishing meal reminders to Service Bus: {e}")
 
 

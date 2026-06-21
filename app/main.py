@@ -3,7 +3,7 @@ NutriAI Diet Service - Main Application
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -52,10 +52,10 @@ async def health():
         "service": "diet-service",
         "status": "healthy" if db_ok else "degraded",
         "database": "connected" if db_ok else "disconnected",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host="127.0.0.1", port=8003, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8003, reload=True)
