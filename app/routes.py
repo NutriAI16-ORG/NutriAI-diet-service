@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.database import get_db
 from app.models import Document, FoodAllergy
@@ -108,7 +109,7 @@ async def generate_plan(payload: GenerateRequest, request: Request, db: Session 
             "additional_recommendations": plan.additional_recommendations or [],
         }
 
-    except Exception as e:
+    except (SQLAlchemyError, ValueError, OSError) as e:
         logger.error(f"Error generating diet plan: {e}")
         return JSONResponse(status_code=503, content={"error": "We're sorry! Our AI diet plan service is temporarily unavailable. Please try again in a few minutes."})
 
@@ -201,6 +202,6 @@ async def download_pdf(plan_id: str, request: Request, db: Session = Depends(get
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
-    except Exception as e:
+    except (SQLAlchemyError, ValueError, OSError) as e:
         logger.error(f"Error generating PDF: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate PDF.")

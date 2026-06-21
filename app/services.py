@@ -19,6 +19,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_settings
 from app.models import Document, DietPlan, FoodAllergy, User, PatientProfile
@@ -311,7 +312,7 @@ def generate_diet_plan_ai(
 
         except json.JSONDecodeError as e:
             logger.error(f"JSON parse error on attempt {attempt + 1}: {e}")
-        except Exception as e:
+        except (ValueError, OSError, RuntimeError) as e:
             logger.error(f"OpenAI error on attempt {attempt + 1}: {e}")
 
     logger.error("All 3 diet plan generation attempts failed. AI service is currently unavailable.")
@@ -432,7 +433,7 @@ def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: 
 
     except ImportError:
         logger.warning("azure-servicebus not installed, skipping meal reminders")
-    except Exception as e:
+    except (OSError, RuntimeError, ValueError) as e:
         logger.error(f"Error publishing meal reminders to Service Bus: {e}")
 
 
@@ -527,7 +528,7 @@ def create_diet_plan(
         logger.info(f"Diet plan created: {diet_plan.id}")
         return diet_plan
 
-    except Exception as e:
+    except (SQLAlchemyError, ValueError, OSError) as e:
         logger.error(f"Error creating diet plan: {e}")
         db.rollback()
         return None
