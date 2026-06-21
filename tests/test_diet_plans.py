@@ -72,7 +72,7 @@ class TestDietPlanHistory:
 class TestDietPlanGeneration:
     """Tests for AI diet plan generation."""
 
-    @patch("routes.create_diet_plan")
+    @patch("app.routes.create_diet_plan")
     def test_generate_diet_plan_success(self, mock_create, authenticated_client, db_session, test_user):
         """Generate should succeed with valid document selection."""
         doc_id = uuid.uuid4()
@@ -208,7 +208,7 @@ class TestAllergyAwareness:
 class TestDietPlanService:
     """Tests for the diet plan service layer."""
 
-    @patch("services.generate_diet_plan_ai")
+    @patch("app.services.generate_diet_plan_ai")
     def test_create_diet_plan_includes_profile_data(self, mock_generate, db_session, test_user):
         """create_diet_plan should fetch and pass medical conditions and dietary preferences."""
         from app.models import PatientProfile
