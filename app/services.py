@@ -402,19 +402,32 @@ def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: 
     """
     Publish 28 messages (7 days × 4 meals) to Service Bus topic
     with scheduled_enqueue_time at actual meal times.
-    """
-    if not settings.AZURE_SERVICE_BUS_CONNECTION_STRING:
-        logger.warning("Service Bus connection string not configured, skipping meal reminders")
-        return
 
+    Authentication priority:
+      1. If AZURE_SERVICE_BUS_CONNECTION_STRING is set → use connection string (local dev / fallback).
+      2. Otherwise → use DefaultAzureCredential (AKS Workload Identity in production).
+    """
     try:
         from azure.servicebus import ServiceBusClient, ServiceBusMessage
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         today = now.date()
-        servicebus_client = ServiceBusClient.from_connection_string(
-            settings.AZURE_SERVICE_BUS_CONNECTION_STRING
-        )
+
+        if settings.AZURE_SERVICE_BUS_CONNECTION_STRING:
+            # --- Local dev / fallback: connection string auth ---
+            logger.info("Publishing meal reminders via Service Bus connection string auth...")
+            servicebus_client = ServiceBusClient.from_connection_string(
+                settings.AZURE_SERVICE_BUS_CONNECTION_STRING
+            )
+        else:
+            # --- Production: Workload Identity via DefaultAzureCredential ---
+            logger.info("Publishing meal reminders via Service Bus DefaultAzureCredential (Workload Identity)...")
+            from azure.identity import DefaultAzureCredential
+            credential = DefaultAzureCredential()
+            servicebus_client = ServiceBusClient(
+                fully_qualified_namespace=settings.AZURE_SERVICE_BUS_FULLY_QUALIFIED_NAMESPACE,
+                credential=credential,
+            )
 
         with servicebus_client:
             sender = servicebus_client.get_topic_sender(topic_name=settings.AZURE_SERVICE_BUS_TOPIC_NAME)
@@ -449,6 +462,8 @@ def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: 
         logger.warning("azure-servicebus not installed, skipping meal reminders")
     except (ServiceBusError, OSError, RuntimeError, ValueError) as e:
         logger.error("Error publishing meal reminders to Service Bus: %s", e)
+
+
 
 
 # ============================================================

@@ -12,11 +12,11 @@ class Settings(BaseSettings):
 
     AZURE_OPENAI_ENDPOINT: str = ""
     AZURE_OPENAI_KEY: str = ""
-    AZURE_OPENAI_DEPLOYMENT_NAME: str = "gpt-4"
-    AZURE_OPENAI_API_VERSION: str = "2024-02-01"
-
+    AZURE_OPENAI_DEPLOYMENT_NAME: str = "gpt-5.1"
+    AZURE_OPENAI_API_VERSION: str = "2025-11-13"
     AZURE_SERVICE_BUS_CONNECTION_STRING: str = ""
-    AZURE_SERVICE_BUS_TOPIC_NAME: str = "meal-reminders"
+    AZURE_SERVICE_BUS_FULLY_QUALIFIED_NAMESPACE: str = ""  # e.g. "nutriai-sb-prod.servicebus.windows.net"
+    AZURE_SERVICE_BUS_TOPIC_NAME: str = "email-notifications"
 
     APPLICATIONINSIGHTS_CONNECTION_STRING: str = ""
 
