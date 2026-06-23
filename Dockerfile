@@ -11,7 +11,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy all files and transfer ownership to non-root user.
+# Copy all files and transfer ownership to non-root user..
 COPY --chown=appuser:appgroup . .
 
 # Switch to non-root user
