@@ -270,9 +270,9 @@ def generate_diet_plan_ai(
         return None
 
     client = get_openai_client()
-    truncated_content = truncate_to_tokens(ocr_content, max_tokens=4000)
+    truncated_content = truncate_to_tokens(ocr_content, max_tokens=2000)
 
-    for attempt in range(3):
+    for attempt in range(2):
         try:
             enhanced = attempt > 0
             system_prompt = build_system_prompt(
