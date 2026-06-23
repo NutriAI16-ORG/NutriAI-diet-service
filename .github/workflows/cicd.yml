@@ -41,3 +41,5 @@ jobs:
       APP_ID: ${{ secrets.APP_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
       MANIFEST_REPO: ${{ secrets.MANIFEST_REPO }}
+
+# Trigger build after ACR update to East US 2
