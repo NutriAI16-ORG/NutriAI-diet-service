@@ -353,14 +353,14 @@ def _build_food_lists(diet_plan: DietPlan) -> tuple:
 
 
 def _send_scheduled_meal_messages(sender, diet_plan: DietPlan, user_email: str, now, today) -> int:
-    """Send per-meal scheduled Service Bus messages. Returns the count sent."""
+    """Send per-meal scheduled Service Bus messages in IST (converted to UTC). Returns the count sent."""
     from azure.servicebus import ServiceBusMessage  # imported inside to stay optional
 
-    meal_times = {
-        "breakfast": 8,
-        "lunch": 13,
-        "snack": 16,
-        "dinner": 19,
+    meal_times_ist = {
+        "breakfast": (8, 0),   # 8:00 AM IST
+        "lunch": (13, 0),      # 1:00 PM IST
+        "snack": (16, 0),      # 4:00 PM IST
+        "dinner": (20, 0),     # 8:00 PM IST
     }
     foods_eat, foods_avoid = _build_food_lists(diet_plan)
     weekly_plan = diet_plan.weekly_meal_plan or {}
@@ -371,8 +371,9 @@ def _send_scheduled_meal_messages(sender, diet_plan: DietPlan, user_email: str, 
         day_name = day_date.strftime("%A").lower()
         day_plan = weekly_plan.get(day_name, {})
 
-        for meal_type, hour in meal_times.items():
-            scheduled_time = datetime(day_date.year, day_date.month, day_date.day, hour, 0, 0)
+        for meal_type, (hour, minute) in meal_times_ist.items():
+            ist_time = datetime(day_date.year, day_date.month, day_date.day, hour, minute, 0)
+            scheduled_time = ist_time - timedelta(hours=5, minutes=30)
             if scheduled_time <= now:
                 continue
             meal_key = "snacks" if meal_type == "snack" else meal_type
