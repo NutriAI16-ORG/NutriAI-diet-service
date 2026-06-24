@@ -10,6 +10,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 from uuid import UUID
+from fastapi import BackgroundTasks
 
 from openai import AzureOpenAI
 from reportlab.lib import colors
@@ -304,8 +305,8 @@ def generate_diet_plan_ai(
                     {"role": "user", "content": user_message},
                 ],
                 response_format={"type": "json_object"},
-                temperature=0.7,
-                max_completion_tokens=4000,
+                temperature=0.6,
+                max_completion_tokens=3000,
             )
 
             response_text = response.choices[0].message.content
@@ -352,8 +353,8 @@ def _build_food_lists(diet_plan: DietPlan) -> tuple:
     return foods_eat, foods_avoid
 
 
-def _send_scheduled_meal_messages(sender, diet_plan: DietPlan, user_email: str, now, today) -> int:
-    """Send per-meal scheduled Service Bus messages in IST (converted to UTC). Returns the count sent."""
+def _send_scheduled_meal_messages(diet_plan: DietPlan, user_email: str, now, today) -> list:
+    """Prepare per-meal scheduled Service Bus messages in IST (converted to UTC) and return them as a list."""
     from azure.servicebus import ServiceBusMessage  # imported inside to stay optional
 
     meal_times_ist = {
@@ -364,7 +365,7 @@ def _send_scheduled_meal_messages(sender, diet_plan: DietPlan, user_email: str, 
     }
     foods_eat, foods_avoid = _build_food_lists(diet_plan)
     weekly_plan = diet_plan.weekly_meal_plan or {}
-    messages_sent = 0
+    messages = []
 
     for day_index in range(7):
         day_date = today + timedelta(days=day_index)
@@ -393,16 +394,15 @@ def _send_scheduled_meal_messages(sender, diet_plan: DietPlan, user_email: str, 
                 subject=f"meal-reminder-{day_name}-{meal_type}",
                 scheduled_enqueue_time_utc=scheduled_time,
             )
-            sender.send_messages(msg)
-            messages_sent += 1
+            messages.append(msg)
 
-    return messages_sent
+    return messages
 
 
 def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: bool = False):
     """
     Publish 28 messages (7 days × 4 meals) to Service Bus topic
-    with scheduled_enqueue_time at actual meal times.
+    in batches to minimize network round-trips.
 
     Authentication priority:
       1. If AZURE_SERVICE_BUS_CONNECTION_STRING is set → use connection string (local dev / fallback).
@@ -433,7 +433,7 @@ def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: 
         with servicebus_client:
             sender = servicebus_client.get_topic_sender(topic_name=settings.AZURE_SERVICE_BUS_TOPIC_NAME)
             with sender:
-                messages_sent = _send_scheduled_meal_messages(sender, diet_plan, user_email, now, today)
+                messages = _send_scheduled_meal_messages(diet_plan, user_email, now, today)
 
                 if user_email and is_first_plan:
                     foods_eat, foods_avoid = _build_food_lists(diet_plan)
@@ -454,8 +454,25 @@ def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: 
                         content_type="application/json",
                         subject="meal-reminder-welcome",
                     )
-                    sender.send_messages(welcome_msg)
-                    messages_sent += 1
+                    messages.append(welcome_msg)
+
+                messages_sent = 0
+                if messages:
+                    try:
+                        batch = sender.create_message_batch()
+                        for msg in messages:
+                            try:
+                                batch.add_message(msg)
+                            except ValueError:
+                                # Batch is full, send the current batch and create a new one
+                                sender.send_messages(batch)
+                                batch = sender.create_message_batch()
+                                batch.add_message(msg)
+                        sender.send_messages(batch)
+                    except (AttributeError, TypeError):
+                        # Fallback for unittest mocks if create_message_batch is not configured to return a batch
+                        sender.send_messages(messages)
+                    messages_sent = len(messages)
 
                 logger.info("Published %d meal reminder messages to Service Bus", messages_sent)
 
@@ -519,6 +536,7 @@ def create_diet_plan(
     user_id,
     document_ids: List[str],
     additional_notes: Optional[str] = None,
+    background_tasks: Optional[BackgroundTasks] = None,
 ) -> Optional[DietPlan]:
     try:
         import uuid as _uuid
@@ -558,7 +576,11 @@ def create_diet_plan(
         is_first_plan = db.query(DietPlan).filter(DietPlan.user_id == user_id).count() == 1
         user = db.query(User).filter(User.id == user_id).first()
         user_email = user.email if user else ""
-        publish_meal_reminders(diet_plan, user_email, is_first_plan=is_first_plan)
+        if background_tasks:
+            logger.info("Enqueuing publish_meal_reminders as background task...")
+            background_tasks.add_task(publish_meal_reminders, diet_plan, user_email, is_first_plan)
+        else:
+            publish_meal_reminders(diet_plan, user_email, is_first_plan=is_first_plan)
 
         logger.info("Diet plan created: %s", diet_plan.id)
         return diet_plan

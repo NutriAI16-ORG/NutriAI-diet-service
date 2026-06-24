@@ -6,7 +6,7 @@ import uuid
 import logging
 from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, Request, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -97,7 +97,7 @@ async def list_completed_documents(request: Request, db: DbSession):
         503: {"description": "AI diet plan service temporarily unavailable"},
     },
 )
-async def generate_plan(payload: "GenerateRequest", request: Request, db: DbSession):
+async def generate_plan(payload: "GenerateRequest", request: Request, db: DbSession, background_tasks: BackgroundTasks):
     user_id = _parse_user_id(request)
 
     if not payload.document_ids:
@@ -109,6 +109,7 @@ async def generate_plan(payload: "GenerateRequest", request: Request, db: DbSess
             user_id=user_id,
             document_ids=payload.document_ids,
             additional_notes=payload.additional_notes,
+            background_tasks=background_tasks,
         )
 
         if not plan:
