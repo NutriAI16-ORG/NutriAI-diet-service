@@ -352,7 +352,7 @@ def _build_food_lists(diet_plan: DietPlan) -> tuple:
     return foods_eat, foods_avoid
 
 
-def _send_scheduled_meal_messages(sender, diet_plan: DietPlan, now, today) -> int:
+def _send_scheduled_meal_messages(sender, diet_plan: DietPlan, user_email: str, now, today) -> int:
     """Send per-meal scheduled Service Bus messages. Returns the count sent."""
     from azure.servicebus import ServiceBusMessage  # imported inside to stay optional
 
@@ -379,7 +379,7 @@ def _send_scheduled_meal_messages(sender, diet_plan: DietPlan, now, today) -> in
             meal_description = day_plan.get(meal_key, day_plan.get(meal_type, ""))
             message_body = json.dumps({
                 "user_id": str(diet_plan.user_id),
-                "user_email": "",
+                "user_email": user_email,
                 "meal_type": meal_type,
                 "foods_to_eat": foods_eat,
                 "foods_to_avoid": foods_avoid,
@@ -432,7 +432,7 @@ def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: 
         with servicebus_client:
             sender = servicebus_client.get_topic_sender(topic_name=settings.AZURE_SERVICE_BUS_TOPIC_NAME)
             with sender:
-                messages_sent = _send_scheduled_meal_messages(sender, diet_plan, now, today)
+                messages_sent = _send_scheduled_meal_messages(sender, diet_plan, user_email, now, today)
 
                 if user_email and is_first_plan:
                     foods_eat, foods_avoid = _build_food_lists(diet_plan)
