@@ -320,7 +320,7 @@ def generate_diet_plan_ai(
 
         except json.JSONDecodeError as e:
             logger.error(f"JSON parse error on attempt {attempt + 1}: {e}")
-        except (ValueError, OSError, RuntimeError) as e:
+        except Exception as e:
             logger.error(f"OpenAI error on attempt {attempt + 1}: {e}")
 
     logger.error("All 3 diet plan generation attempts failed. AI service is currently unavailable.")
@@ -399,7 +399,7 @@ def _send_scheduled_meal_messages(diet_plan: DietPlan, user_email: str, now, tod
     return messages
 
 
-def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: bool = False):
+def publish_meal_reminders(diet_plan_id: UUID, user_email: str, is_first_plan: bool = False):
     """
     Publish 28 messages (7 days × 4 meals) to Service Bus topic
     in batches to minimize network round-trips.
@@ -408,7 +408,14 @@ def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: 
       1. If AZURE_SERVICE_BUS_CONNECTION_STRING is set → use connection string (local dev / fallback).
       2. Otherwise → use DefaultAzureCredential (AKS Workload Identity in production).
     """
+    from app.database import SessionLocal
+    db = SessionLocal()
     try:
+        diet_plan = db.query(DietPlan).filter(DietPlan.id == diet_plan_id).first()
+        if not diet_plan:
+            logger.error("Diet plan not found for ID: %s", diet_plan_id)
+            return
+
         from azure.servicebus import ServiceBusClient, ServiceBusMessage
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -478,8 +485,10 @@ def publish_meal_reminders(diet_plan: DietPlan, user_email: str, is_first_plan: 
 
     except ImportError:
         logger.warning("azure-servicebus not installed, skipping meal reminders")
-    except (ServiceBusError, OSError, RuntimeError, ValueError) as e:
+    except Exception as e:
         logger.error("Error publishing meal reminders to Service Bus: %s", e)
+    finally:
+        db.close()
 
 
 
@@ -578,14 +587,14 @@ def create_diet_plan(
         user_email = user.email if user else ""
         if background_tasks:
             logger.info("Enqueuing publish_meal_reminders as background task...")
-            background_tasks.add_task(publish_meal_reminders, diet_plan, user_email, is_first_plan)
+            background_tasks.add_task(publish_meal_reminders, diet_plan.id, user_email, is_first_plan)
         else:
-            publish_meal_reminders(diet_plan, user_email, is_first_plan=is_first_plan)
+            publish_meal_reminders(diet_plan.id, user_email, is_first_plan=is_first_plan)
 
         logger.info("Diet plan created: %s", diet_plan.id)
         return diet_plan
 
-    except (SQLAlchemyError, ValueError, OSError) as e:
+    except Exception as e:
         logger.error("Error creating diet plan: %s", e)
         db.rollback()
         return None

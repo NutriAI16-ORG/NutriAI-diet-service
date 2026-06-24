@@ -302,7 +302,7 @@ class TestDietPlanServiceLayer:
 
     @patch("app.services.settings.AZURE_SERVICE_BUS_CONNECTION_STRING", "Endpoint=sb://test")
     @patch("azure.servicebus.ServiceBusClient")
-    def test_publish_meal_reminders_success(self, mock_sb_class, test_user):
+    def test_publish_meal_reminders_success(self, mock_sb_class, db_session, test_user):
         from app.services import publish_meal_reminders
         
         mock_sender = MagicMock()
@@ -321,8 +321,10 @@ class TestDietPlanServiceLayer:
             },
             generated_at=datetime.utcnow()
         )
+        db_session.add(plan)
+        db_session.commit()
 
-        publish_meal_reminders(plan, "user@example.com", is_first_plan=True)
+        publish_meal_reminders(plan.id, "user@example.com", is_first_plan=True)
         assert mock_sb_class.from_connection_string.called
         assert mock_sender.send_messages.called
 

@@ -131,7 +131,7 @@ async def generate_plan(payload: "GenerateRequest", request: Request, db: DbSess
             "additional_recommendations": plan.additional_recommendations or [],
         }
 
-    except (SQLAlchemyError, ValueError, OSError) as e:
+    except Exception as e:
         logger.error(f"Error generating diet plan: {e}")
         return JSONResponse(status_code=503, content={"error": "We're sorry! Our AI diet plan service is temporarily unavailable. Please try again in a few minutes."})
 
