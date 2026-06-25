@@ -32,7 +32,6 @@ jobs:
   cd:
     needs: ci
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
-    environment: ${{ github.ref == 'refs/heads/main' && 'production' || '' }}
     uses: NutriAI16-ORG/NutriAI-reusable-workflows/.github/workflows/helm-updater.yml@main
     with:
       helm-service-name: diet-service
