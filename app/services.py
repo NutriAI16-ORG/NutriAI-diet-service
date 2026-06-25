@@ -273,7 +273,7 @@ def generate_diet_plan_ai(
     client = get_openai_client()
     truncated_content = truncate_to_tokens(ocr_content, max_tokens=2000)
 
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             enhanced = attempt > 0
             system_prompt = build_system_prompt(
@@ -373,9 +373,10 @@ def _send_scheduled_meal_messages(diet_plan: DietPlan, user_email: str, now, tod
         day_plan = weekly_plan.get(day_name, {})
 
         for meal_type, (hour, minute) in meal_times_ist.items():
-            ist_time = datetime(day_date.year, day_date.month, day_date.day, hour, minute, 0)
-            scheduled_time = ist_time - timedelta(hours=5, minutes=30)
-            if scheduled_time <= now:
+            # Build IST time and convert to UTC (IST = UTC+5:30)
+            ist_time = datetime(day_date.year, day_date.month, day_date.day, hour, minute, 0, tzinfo=timezone.utc) - timedelta(hours=5, minutes=30)
+            # Compare against now in UTC (also timezone-aware for correctness)
+            if ist_time <= datetime.now(timezone.utc):
                 continue
             meal_key = "snacks" if meal_type == "snack" else meal_type
             meal_description = day_plan.get(meal_key, day_plan.get(meal_type, ""))
@@ -392,7 +393,7 @@ def _send_scheduled_meal_messages(diet_plan: DietPlan, user_email: str, now, tod
                 body=message_body,
                 content_type="application/json",
                 subject=f"meal-reminder-{day_name}-{meal_type}",
-                scheduled_enqueue_time_utc=scheduled_time,
+                scheduled_enqueue_time_utc=ist_time,
             )
             messages.append(msg)
 
@@ -418,7 +419,7 @@ def publish_meal_reminders(diet_plan_id: UUID, user_email: str, is_first_plan: b
 
         from azure.servicebus import ServiceBusClient, ServiceBusMessage
 
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
         today = now.date()
 
         if settings.AZURE_SERVICE_BUS_CONNECTION_STRING:

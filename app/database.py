@@ -11,12 +11,15 @@ from app.config import get_settings
 
 settings = get_settings()
 
+_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 engine = create_engine(
     settings.DATABASE_URL,
-    pool_size=5,
-    max_overflow=10,
+    **({} if _is_sqlite else {
+        "pool_size": 5,
+        "max_overflow": 10,
+        "pool_recycle": 3600,
+    }),
     pool_pre_ping=True,
-    pool_recycle=3600,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
