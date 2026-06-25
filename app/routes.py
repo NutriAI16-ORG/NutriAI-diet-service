@@ -54,7 +54,7 @@ def _parse_plan_id(plan_id: str) -> uuid.UUID:
         400: {"description": MSG_INVALID_USER_ID},
     },
 )
-async def list_completed_documents(request: Request, db: DbSession):
+def list_completed_documents(request: Request, db: DbSession):
     """Get completed documents for diet plan generation."""
     user_id = _parse_user_id(request)
 
@@ -97,7 +97,7 @@ async def list_completed_documents(request: Request, db: DbSession):
         503: {"description": "AI diet plan service temporarily unavailable"},
     },
 )
-async def generate_plan(payload: "GenerateRequest", request: Request, db: DbSession, background_tasks: BackgroundTasks):
+def generate_plan(payload: "GenerateRequest", request: Request, db: DbSession, background_tasks: BackgroundTasks):
     user_id = _parse_user_id(request)
 
     if not payload.document_ids:
@@ -143,7 +143,7 @@ async def generate_plan(payload: "GenerateRequest", request: Request, db: DbSess
         400: {"description": MSG_INVALID_USER_ID},
     },
 )
-async def history(request: Request, db: DbSession):
+def history(request: Request, db: DbSession):
     user_id = _parse_user_id(request)
 
     plans = get_diet_plans(db, user_id)
@@ -169,7 +169,7 @@ async def history(request: Request, db: DbSession):
         404: {"description": "Diet plan not found"},
     },
 )
-async def plan_detail(plan_id: str, request: Request, db: DbSession):
+def plan_detail(plan_id: str, request: Request, db: DbSession):
     user_id = _parse_user_id(request)
     plan_uuid = _parse_plan_id(plan_id)
 
@@ -202,7 +202,7 @@ async def plan_detail(plan_id: str, request: Request, db: DbSession):
         500: {"description": "Failed to generate PDF"},
     },
 )
-async def download_pdf(plan_id: str, request: Request, db: DbSession):
+def download_pdf(plan_id: str, request: Request, db: DbSession):
     user_id = _parse_user_id(request)
     plan_uuid = _parse_plan_id(plan_id)
 

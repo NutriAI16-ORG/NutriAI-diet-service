@@ -199,6 +199,7 @@ Guidelines:
 8. Ensure the weekly meal plan is varied and nutritionally balanced.
 9. Include all 7 days (monday through sunday) in the weekly meal plan.
 10. Each day must have breakfast, lunch, dinner, and snacks.
+11. Keep all meal descriptions and reasons extremely concise and brief (1 short sentence or phrase per item) to ensure the complete diet plan fits within token limits.
 """
     return system_prompt
 
@@ -306,7 +307,7 @@ def generate_diet_plan_ai(
                 ],
                 response_format={"type": "json_object"},
                 temperature=0.6,
-                max_completion_tokens=3000,
+                max_completion_tokens=4000,
             )
 
             response_text = response.choices[0].message.content
