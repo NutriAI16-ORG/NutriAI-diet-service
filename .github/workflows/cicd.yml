@@ -1,10 +1,10 @@
 name: CI/CD - Diet Service
 
 on:
-  push:
-    branches: [main, dev]
-  pull_request:
-    branches: [main, dev]
+  #push:
+  #  branches: [main, dev]
+  #pull_request:
+  #  branches: [main, dev]
 
 permissions:
   contents: write
