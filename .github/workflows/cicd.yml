@@ -20,9 +20,9 @@ jobs:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
-      ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
-      ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+      ACR_LOGIN_SERVER: ${{ github.ref == 'refs/heads/main' && secrets.PROD_ACR_LOGIN_SERVER || secrets.DEV_ACR_LOGIN_SERVER }}
+      ACR_USERNAME: ${{ github.ref == 'refs/heads/main' && secrets.PROD_ACR_USERNAME || secrets.DEV_ACR_USERNAME }}
+      ACR_PASSWORD: ${{ github.ref == 'refs/heads/main' && secrets.PROD_ACR_PASSWORD || secrets.DEV_ACR_PASSWORD }}
       SMTP_HOST: ${{ secrets.SMTP_HOST }}
       SMTP_PORT: ${{ secrets.SMTP_PORT }}
       SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
